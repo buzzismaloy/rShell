@@ -9,14 +9,20 @@ fn main() {
         stdout().flush().unwrap();
 
         let mut input = String::new();
-        stdin().read_line(&mut input).unwrap();
+        if let Err(e) = stdin().read_line(&mut input) {
+            eprintln!("Failed to read input due to the following error: {}", e);
+            continue;
+        }
 
         let mut commands = input.trim().split(" | ").peekable();
-        let mut prev_command = None;
+        let mut prev_command: Option<Child> = None;
 
         while let Some(command) = commands.next() {
             let mut parts = command.trim().split_whitespace();
-            let command = parts.next().unwrap();
+            let Some(command) = parts.next() else {
+                eprintln!("Error!!! Empty command in pipeline segment!");
+                continue;
+            };
             let args = parts;
 
             match command {
@@ -32,9 +38,13 @@ fn main() {
                 "exit" => return,
 
                 command => {
-                    let stdin = prev_command.map_or(Stdio::inherit(), |output: Child| {
-                        Stdio::from(output.stdout.unwrap())
-                    });
+                    let stdin = match prev_command {
+                        Some(mut output) => match output.stdout.take() {
+                            Some(out) => Stdio::from(out),
+                            None => Stdio::inherit(),
+                        },
+                        None => Stdio::inherit(),
+                    };
 
                     let stdout = if commands.peek().is_some() {
                         Stdio::piped()
