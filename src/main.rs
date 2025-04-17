@@ -1,3 +1,4 @@
+use gethostname::gethostname;
 use std::env;
 use std::io::{Write, stdin, stdout};
 use std::path::Path;
@@ -5,7 +6,10 @@ use std::process::{Child, Command, Stdio};
 
 fn main() {
     loop {
-        print!("=> ");
+        let username = env::var("USER").unwrap_or_else(|_| "unknown".to_string());
+        let hostname = gethostname().to_string_lossy().into_owned();
+
+        print!("{}@{} => ", username, hostname);
         stdout().flush().unwrap();
 
         let mut input = String::new();
