@@ -24,10 +24,17 @@ fn main() {
                 }
             }
 
-            command => {
-                let mut child_process = Command::new(command).args(args).spawn().unwrap();
+            "exit" => return,
 
-                child_process.wait();
+            command => {
+                let child_process = Command::new(command).args(args).spawn();
+
+                match child_process {
+                    Ok(mut child_process) => {
+                        child_process.wait();
+                    }
+                    Err(e) => eprintln!("{}", e),
+                };
             }
         }
     }
