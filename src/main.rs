@@ -1,4 +1,6 @@
+use std::env;
 use std::io::{Write, stdin, stdout};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
 fn main() {
@@ -9,10 +11,24 @@ fn main() {
         let mut input = String::new();
         stdin().read_line(&mut input).unwrap();
 
-        let command = input.trim();
+        let mut parts = input.trim().split_whitespace();
+        let command = parts.next().unwrap();
+        let args = parts;
 
-        let mut child_process = Command::new(command).spawn().unwrap();
+        match command {
+            "cd" => {
+                let new_dir = args.peekable().peek().map_or("/", |x| *x);
+                let new_path = Path::new(new_dir);
+                if let Err(e) = env::set_current_dir(&new_path) {
+                    eprintln!("{}", e);
+                }
+            }
 
-        child_process.wait();
+            command => {
+                let mut child_process = Command::new(command).args(args).spawn().unwrap();
+
+                child_process.wait();
+            }
+        }
     }
 }
