@@ -39,20 +39,24 @@ fn format_path() -> String {
     format!("/{}/{}", abbrev.join("/"), last)
 }
 
+fn print_prompt() {
+    let username = env::var("USER").unwrap_or_else(|_| "unknown".to_string());
+    let hostname = gethostname().to_string_lossy().into_owned();
+    let current_path = format_path();
+
+    print!(
+        "{}@{} {}{}> ",
+        username.cyan(),
+        hostname,
+        "=".to_string().cyan(),
+        current_path.cyan()
+    );
+    stdout().flush().unwrap();
+}
+
 fn main() {
     loop {
-        let username = env::var("USER").unwrap_or_else(|_| "unknown".to_string());
-        let hostname = gethostname().to_string_lossy().into_owned();
-        let current_path = format_path();
-
-        print!(
-            "{}@{} {}{}> ",
-            username.cyan(),
-            hostname,
-            "=".to_string().cyan(),
-            current_path.cyan()
-        );
-        stdout().flush().unwrap();
+        print_prompt();
 
         let mut input = String::new();
         if let Err(e) = stdin().read_line(&mut input) {
