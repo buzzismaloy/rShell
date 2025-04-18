@@ -1,15 +1,55 @@
 use gethostname::gethostname;
 use std::env;
 use std::io::{Write, stdin, stdout};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+
+fn format_path() -> String {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("?"));
+    let home = env::var("HOME").unwrap_or_else(|_| "/".to_string());
+
+    let path_str = cwd.to_string_lossy();
+    if path_str == home {
+        return "".to_string();
+    }
+
+    let relative = if let Some(stripped) = path_str.strip_prefix(&home) {
+        stripped.trim_start_matches('/').to_string()
+    } else {
+        path_str.to_string()
+    };
+
+    let mut parts: Vec<&str> = relative.split('/').collect();
+
+    if parts.len() == 1 {
+        return parts[0].to_string();
+    }
+
+    let last = parts.pop().unwrap();
+    let abbrev: Vec<String> = parts
+        .into_iter()
+        .map(|s| s.chars().next().unwrap().to_string())
+        .collect();
+
+    format!("{}/{}", abbrev.join("/"), last)
+}
 
 fn main() {
     loop {
         let username = env::var("USER").unwrap_or_else(|_| "unknown".to_string());
         let hostname = gethostname().to_string_lossy().into_owned();
+        let current_path = format_path();
 
-        print!("{}@{} => ", username, hostname);
+        print!(
+            "{}@{} ={}> ",
+            username,
+            hostname,
+            if current_path.is_empty() {
+                "".to_string()
+            } else {
+                format!("{}", current_path)
+            }
+        );
         stdout().flush().unwrap();
 
         let mut input = String::new();
