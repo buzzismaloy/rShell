@@ -39,6 +39,18 @@ fn main() {
                     prev_command = None;
                 }
 
+                "pwd" => {
+                    match env::current_dir() {
+                        Ok(path) => {
+                            println!("{}", path.display());
+                        }
+                        Err(e) => {
+                            eprintln!("Error occured getting current path: {}", e);
+                        }
+                    }
+                    prev_command = None;
+                }
+
                 "exit" => return,
 
                 command => {
