@@ -86,14 +86,7 @@ fn main() {
                 }
 
                 "pwd" => {
-                    match env::current_dir() {
-                        Ok(path) => {
-                            println!("{}", path.display());
-                        }
-                        Err(e) => {
-                            eprintln!("Error occured getting current path: {}", e);
-                        }
-                    }
+                    run_builtin_pwd(args.map(|s| s.to_string()));
                     prev_command = None;
                 }
 
@@ -137,4 +130,42 @@ fn main() {
             fin_command.wait().unwrap();
         }
     }
+}
+
+fn run_builtin_pwd(args: impl Iterator<Item = String>) {
+    let mut physical = false;
+    let mut show_help = false;
+
+    for arg in args {
+        match arg.as_str() {
+            "-P" | "--physical" | "-p" => physical = true,
+            "-L" | "--logical" | "-l" => physical = false,
+            "-h" | "--help" => show_help = true,
+            _ => {
+                eprintln!("built-in pwd: unrecognized option '{}'", arg);
+                return;
+            }
+        }
+    }
+
+    if show_help {
+        println!("Name\n\tpwd - output the current working directory\n");
+        println!("Usage: pwd [OPTION]");
+        println!("  -L, --logical     use PWD from environment, even if it contains symlinks");
+        println!("  -P, --physical    avoid all symlinks");
+        println!("  -h, --help        display this help and exit");
+
+        return;
+    }
+
+    let path = if physical {
+        env::current_dir().unwrap_or_default()
+    } else {
+        env::var("PWD")
+            .ok()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| env::current_dir().unwrap_or_default())
+    };
+
+    println!("{}", path.display());
 }
