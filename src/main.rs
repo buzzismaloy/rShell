@@ -19,19 +19,23 @@ fn format_path() -> String {
         path_str.to_string()
     };
 
-    let mut parts: Vec<&str> = relative.split('/').collect();
+    let mut parts: Vec<&str> = relative.split('/').filter(|p| !p.is_empty()).collect();
+
+    if parts.is_empty() {
+        return "/".to_string();
+    }
 
     if parts.len() == 1 {
-        return parts[0].to_string();
+        return format!("/{}", parts[0]);
     }
 
     let last = parts.pop().unwrap();
     let abbrev: Vec<String> = parts
         .into_iter()
-        .map(|s| s.chars().next().unwrap().to_string())
+        .map(|s| s.chars().next().unwrap_or('?').to_string())
         .collect();
 
-    format!("{}/{}", abbrev.join("/"), last)
+    format!("/{}/{}", abbrev.join("/"), last)
 }
 
 fn main() {
