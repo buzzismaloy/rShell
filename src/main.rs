@@ -176,7 +176,7 @@ fn run_buitlin_help() {
 }
 
 fn run_builtin_pwd(args: impl Iterator<Item = String>) {
-    let mut physical = false;
+    let mut physical = true;
     let mut show_help = false;
 
     for arg in args {
