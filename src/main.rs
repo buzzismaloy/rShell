@@ -77,11 +77,7 @@ fn main() {
 
             match command {
                 "cd" => {
-                    let new_dir = args.peekable().peek().map_or("/", |x| *x);
-                    let new_path = Path::new(new_dir);
-                    if let Err(e) = env::set_current_dir(&new_path) {
-                        eprintln!("{}", e);
-                    }
+                    run_builtin_cd(args.map(|s| s.to_string()));
                     prev_command = None;
                 }
 
@@ -90,7 +86,10 @@ fn main() {
                     prev_command = None;
                 }
 
-                "help" => run_buitlin_help(),
+                "help" => {
+                    run_buitlin_help();
+                    prev_command = None;
+                }
 
                 "exit" => return,
 
@@ -131,6 +130,33 @@ fn main() {
         if let Some(mut fin_command) = prev_command {
             fin_command.wait().unwrap();
         }
+    }
+}
+
+fn run_builtin_cd<I: Iterator<Item = String>>(mut args: I) {
+    let target = args.next();
+    let home = env::var("HOME").unwrap_or_else(|_| "/".to_string());
+    let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+
+    let dest_path = match target {
+        Some(path) if path.starts_with("~") => {
+            let path_suf = path.trim_start_matches('~');
+            PathBuf::from(home.clone()).join(path_suf)
+        }
+
+        Some(path) => PathBuf::from(path),
+
+        None => {
+            let current_str = current_dir.to_string_lossy();
+            if current_str == home {
+                return;
+            }
+            PathBuf::from(home)
+        }
+    };
+
+    if let Err(e) = env::set_current_dir(&dest_path) {
+        eprintln!("Occured error in builtin cd: {}", e);
     }
 }
 
