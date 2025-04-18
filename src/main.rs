@@ -46,7 +46,7 @@ fn print_prompt() {
 
     print!(
         "{}@{} {}{}> ",
-        username.cyan(),
+        username.cyan().bold(),
         hostname,
         "=".to_string().cyan(),
         current_path.cyan()
@@ -90,6 +90,8 @@ fn main() {
                     prev_command = None;
                 }
 
+                "help" => run_buitlin_help(),
+
                 "exit" => return,
 
                 command => {
@@ -130,6 +132,21 @@ fn main() {
             fin_command.wait().unwrap();
         }
     }
+}
+
+fn run_buitlin_help() {
+    let builtins = ["cd", "pwd", "help", "exit"];
+    println!(
+        "This is a {} - Shell written in Rust.",
+        "rShell".to_string().cyan().bold()
+    );
+    println!("Here is the list of built-in functions:");
+
+    for i in builtins {
+        println!("\t{}", i);
+    }
+
+    println!("\nUse man command for more information on other programs");
 }
 
 fn run_builtin_pwd(args: impl Iterator<Item = String>) {
