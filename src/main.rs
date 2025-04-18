@@ -2,7 +2,7 @@ use colored::*;
 use gethostname::gethostname;
 use std::env;
 use std::io::{Write, stdin, stdout};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
 fn format_path() -> String {
@@ -55,6 +55,7 @@ fn print_prompt() {
 }
 
 fn main() {
+    let mut oldpwd: Option<PathBuf> = None;
     loop {
         print_prompt();
 
@@ -77,7 +78,7 @@ fn main() {
 
             match command {
                 "cd" => {
-                    run_builtin_cd(args.map(|s| s.to_string()));
+                    run_builtin_cd(args.map(|s| s.to_string()), &mut oldpwd);
                     prev_command = None;
                 }
 
@@ -133,12 +134,22 @@ fn main() {
     }
 }
 
-fn run_builtin_cd<I: Iterator<Item = String>>(mut args: I) {
+fn run_builtin_cd<I: Iterator<Item = String>>(mut args: I, oldpwd: &mut Option<PathBuf>) {
     let target = args.next();
     let home = env::var("HOME").unwrap_or_else(|_| "/".to_string());
     let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
 
-    let dest_path = match target {
+    let dest_path = match target.as_deref() {
+        Some("-") => {
+            if let Some(prev_dir) = oldpwd.as_ref() {
+                println!("Previous path is: {}", prev_dir.display());
+                prev_dir.clone()
+            } else {
+                eprintln!("cd: previous directory is not set!");
+                return;
+            }
+        }
+
         Some(path) if path.starts_with("~") => {
             let path_suf = path.trim_start_matches('~');
             PathBuf::from(home.clone()).join(path_suf)
@@ -157,6 +168,8 @@ fn run_builtin_cd<I: Iterator<Item = String>>(mut args: I) {
 
     if let Err(e) = env::set_current_dir(&dest_path) {
         eprintln!("Occured error in builtin cd: {}", e);
+    } else {
+        *oldpwd = Some(current_dir);
     }
 }
 
