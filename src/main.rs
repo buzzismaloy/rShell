@@ -1,3 +1,4 @@
+use colored::*;
 use gethostname::gethostname;
 use std::env;
 use std::io::{Write, stdin, stdout};
@@ -45,14 +46,11 @@ fn main() {
         let current_path = format_path();
 
         print!(
-            "{}@{} ={}> ",
-            username,
+            "{}@{} {}{}> ",
+            username.cyan(),
             hostname,
-            if current_path.is_empty() {
-                "".to_string()
-            } else {
-                format!("{}", current_path)
-            }
+            "=".to_string().cyan(),
+            current_path.cyan()
         );
         stdout().flush().unwrap();
 

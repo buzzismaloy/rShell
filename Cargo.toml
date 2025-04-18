@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 gethostname = "0.2"
+colored = "2.0"
