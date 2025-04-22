@@ -1,9 +1,16 @@
 use colored::*;
+use dirs::home_dir;
 use gethostname::gethostname;
+use rustyline::Editor;
+use rustyline::history::DefaultHistory;
 use std::env;
-use std::io::{Write, stdin, stdout};
+use std::fs::{self, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+
+const HISTSIZE: usize = 1500;
+const HISTFILESIZE: usize = 2200;
 
 fn format_path() -> String {
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("?"));
@@ -39,97 +46,195 @@ fn format_path() -> String {
     format!("/{}/{}", abbrev.join("/"), last)
 }
 
-fn print_prompt() {
+fn get_prompt() -> String {
     let username = env::var("USER").unwrap_or_else(|_| "unknown".to_string());
     let hostname = gethostname().to_string_lossy().into_owned();
     let current_path = format_path();
 
-    print!(
+    format!(
         "{}@{} {}{}> ",
         username.cyan().bold(),
         hostname,
         "=".to_string().cyan(),
         current_path.cyan()
-    );
-    stdout().flush().unwrap();
+    )
 }
 
 fn main() {
     let mut oldpwd: Option<PathBuf> = None;
-    loop {
-        print_prompt();
+    let mut rl = Editor::<(), DefaultHistory>::new().unwrap();
+    let history_path = get_history_path();
+    let mut history = load_history(&history_path);
 
-        let mut input = String::new();
-        if let Err(e) = stdin().read_line(&mut input) {
-            eprintln!("Failed to read input due to the following error: {}", e);
-            continue;
+    let _ = rl.load_history(&history_path);
+
+    loop {
+        let prompt = get_prompt();
+        let line = rl.readline(&prompt);
+
+        match line {
+            Ok(input) => {
+                let trimmed = input.trim();
+                if !trimmed.is_empty() {
+                    if history.len() >= HISTSIZE {
+                        history.remove(0);
+                    }
+
+                    history.push(trimmed.to_string());
+                    let _ = rl.add_history_entry(trimmed);
+                }
+
+                let mut commands = trimmed.split('|').peekable();
+                let mut prev_command: Option<Child> = None;
+
+                while let Some(command) = commands.next() {
+                    let mut parts = command.trim().split_whitespace();
+                    let Some(command) = parts.next() else {
+                        eprintln!("Error!!! Empty command in pipeline segment!");
+                        continue;
+                    };
+                    let args = parts.collect::<Vec<_>>();
+
+                    match command {
+                        "cd" => {
+                            run_builtin_cd(args.into_iter().map(|s| s.to_string()), &mut oldpwd);
+                            prev_command = None;
+                        }
+
+                        "pwd" => {
+                            run_builtin_pwd(args.into_iter().map(|s| s.to_string()));
+                            prev_command = None;
+                        }
+
+                        "help" => {
+                            run_buitlin_help();
+                            prev_command = None;
+                        }
+
+                        "exit" => {
+                            save_history(&history, &history_path);
+                            let _ = rl.save_history(&history_path);
+                            return;
+                        }
+
+                        "history" => {
+                            run_builtin_history(&args, &mut history, &history_path, &mut rl);
+                        }
+
+                        _ => {
+                            let stdin = match prev_command {
+                                Some(mut output) => match output.stdout.take() {
+                                    Some(out) => Stdio::from(out),
+                                    None => Stdio::inherit(),
+                                },
+                                None => Stdio::inherit(),
+                            };
+
+                            let stdout = if commands.peek().is_some() {
+                                Stdio::piped()
+                            } else {
+                                Stdio::inherit()
+                            };
+
+                            let output = Command::new(command)
+                                .args(args)
+                                .stdin(stdin)
+                                .stdout(stdout)
+                                .spawn();
+
+                            match output {
+                                Ok(output) => {
+                                    prev_command = Some(output);
+                                }
+                                Err(e) => {
+                                    prev_command = None;
+                                    eprintln!("{}", e);
+                                }
+                            };
+                        }
+                    }
+                }
+
+                if let Some(mut fin_command) = prev_command {
+                    fin_command.wait().unwrap();
+                }
+            }
+
+            Err(e) => {
+                println!("Error: {}", e);
+                save_history(&history, &history_path);
+                let _ = rl.save_history(&history_path);
+                break;
+            }
+        }
+    }
+}
+
+fn get_history_path() -> PathBuf {
+    let mut path = home_dir().unwrap();
+    path.push(".rshell_history");
+    path
+}
+
+fn load_history(path: &PathBuf) -> Vec<String> {
+    if let Ok(file) = fs::File::open(path) {
+        let reader = BufReader::new(file);
+        reader.lines().filter_map(Result::ok).collect()
+    } else {
+        vec![]
+    }
+}
+
+fn save_history(history: &[String], path: &PathBuf) {
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+
+    let mut writer = std::io::BufWriter::new(file);
+
+    let lines_to_write = history.iter().rev().take(HISTFILESIZE).collect::<Vec<_>>();
+
+    for command in lines_to_write.into_iter().rev() {
+        writeln!(writer, "{}", command).unwrap();
+    }
+}
+
+fn run_builtin_history(
+    args: &[&str],
+    history: &mut Vec<String>,
+    path: &PathBuf,
+    rl: &mut Editor<(), DefaultHistory>,
+) {
+    match args {
+        ["-c"] => {
+            history.clear();
+            let _ = rl.clear_history();
+            save_history(history, path);
+            println!("History cleared.");
         }
 
-        let mut commands = input.trim().split(" | ").peekable();
-        let mut prev_command: Option<Child> = None;
+        ["-w"] => {
+            save_history(history, path);
+            println!("History was written to file.")
+        }
 
-        while let Some(command) = commands.next() {
-            let mut parts = command.trim().split_whitespace();
-            let Some(command) = parts.next() else {
-                eprintln!("Error!!! Empty command in pipeline segment!");
-                continue;
+        [] => {
+            let start = if history.len() > HISTSIZE {
+                history.len() - HISTSIZE
+            } else {
+                0
             };
-            let args = parts;
 
-            match command {
-                "cd" => {
-                    run_builtin_cd(args.map(|s| s.to_string()), &mut oldpwd);
-                    prev_command = None;
-                }
-
-                "pwd" => {
-                    run_builtin_pwd(args.map(|s| s.to_string()));
-                    prev_command = None;
-                }
-
-                "help" => {
-                    run_buitlin_help();
-                    prev_command = None;
-                }
-
-                "exit" => return,
-
-                command => {
-                    let stdin = match prev_command {
-                        Some(mut output) => match output.stdout.take() {
-                            Some(out) => Stdio::from(out),
-                            None => Stdio::inherit(),
-                        },
-                        None => Stdio::inherit(),
-                    };
-
-                    let stdout = if commands.peek().is_some() {
-                        Stdio::piped()
-                    } else {
-                        Stdio::inherit()
-                    };
-
-                    let output = Command::new(command)
-                        .args(args)
-                        .stdin(stdin)
-                        .stdout(stdout)
-                        .spawn();
-
-                    match output {
-                        Ok(output) => {
-                            prev_command = Some(output);
-                        }
-                        Err(e) => {
-                            prev_command = None;
-                            eprintln!("{}", e);
-                        }
-                    };
-                }
+            for (i, cmd) in history.iter().skip(start).enumerate() {
+                println!("{:>5} {}", start + i + 1, cmd);
             }
         }
 
-        if let Some(mut fin_command) = prev_command {
-            fin_command.wait().unwrap();
+        _ => {
+            eprintln!("Usage: history [-c] or [-w]");
         }
     }
 }

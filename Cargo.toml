@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 gethostname = "0.2"
 colored = "2.0"
+rustyline = "13"
+dirs = "5"
