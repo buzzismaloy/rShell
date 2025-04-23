@@ -2,10 +2,10 @@ use colored::*;
 use dirs::home_dir;
 use gethostname::gethostname;
 use rustyline::Editor;
-use rustyline::history::DefaultHistory;
+use rustyline::history::{DefaultHistory, History};
 use std::env;
-use std::fs::{self, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
@@ -64,8 +64,6 @@ fn main() {
     let mut oldpwd: Option<PathBuf> = None;
     let mut rl = Editor::<(), DefaultHistory>::new().unwrap();
     let history_path = get_history_path();
-    let mut history = load_history(&history_path);
-
     let _ = rl.load_history(&history_path);
 
     loop {
@@ -76,12 +74,13 @@ fn main() {
             Ok(input) => {
                 let trimmed = input.trim();
                 if !trimmed.is_empty() {
-                    if history.len() >= HISTSIZE {
-                        history.remove(0);
-                    }
+                    let starts_with_space = input.starts_with(' ');
 
-                    history.push(trimmed.to_string());
-                    let _ = rl.add_history_entry(trimmed);
+                    //HISTCONTROL=ignorespace
+                    if !starts_with_space {
+                        rl.add_history_entry(trimmed).ok();
+                        trim_shell_history(&mut rl);
+                    }
                 }
 
                 let mut commands = trimmed.split('|').peekable();
@@ -112,13 +111,12 @@ fn main() {
                         }
 
                         "exit" => {
-                            save_history(&history, &history_path);
-                            let _ = rl.save_history(&history_path);
+                            save_shell_history(&rl);
                             return;
                         }
 
                         "history" => {
-                            run_builtin_history(&args, &mut history, &history_path, &mut rl);
+                            run_builtin_history(&args, &mut rl);
                         }
 
                         _ => {
@@ -162,11 +160,51 @@ fn main() {
 
             Err(e) => {
                 println!("Error: {}", e);
-                save_history(&history, &history_path);
-                let _ = rl.save_history(&history_path);
+                save_shell_history(&rl);
                 break;
             }
         }
+    }
+}
+
+fn trim_shell_history(rl: &mut Editor<(), DefaultHistory>) {
+    let history_entries: Vec<String> = rl.history().iter().map(|s| s.to_string()).collect();
+    let start = if history_entries.len() > HISTSIZE {
+        history_entries.len() - HISTSIZE
+    } else {
+        0
+    };
+
+    let trimmed = &history_entries[start..];
+
+    rl.clear_history().ok();
+    for entry in trimmed {
+        rl.add_history_entry(entry.as_str()).ok();
+    }
+}
+
+fn save_shell_history(rl: &Editor<(), DefaultHistory>) {
+    let path = get_history_path();
+    let history_entries: Vec<String> = rl.history().iter().map(|s| s.to_string()).collect();
+    let total = history_entries.len();
+    let start = if total > HISTFILESIZE {
+        total - HISTFILESIZE
+    } else {
+        0
+    };
+
+    let trimmed = &history_entries[start..];
+
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&path)
+        .unwrap();
+
+    let mut writer = std::io::BufWriter::new(file);
+    for entry in trimmed {
+        writeln!(writer, "{}", entry).ok();
     }
 }
 
@@ -176,59 +214,27 @@ fn get_history_path() -> PathBuf {
     path
 }
 
-fn load_history(path: &PathBuf) -> Vec<String> {
-    if let Ok(file) = fs::File::open(path) {
-        let reader = BufReader::new(file);
-        reader.lines().filter_map(Result::ok).collect()
-    } else {
-        vec![]
-    }
-}
-
-fn save_history(history: &[String], path: &PathBuf) {
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(path)
-        .unwrap();
-
-    let mut writer = std::io::BufWriter::new(file);
-
-    let lines_to_write = history.iter().rev().take(HISTFILESIZE).collect::<Vec<_>>();
-
-    for command in lines_to_write.into_iter().rev() {
-        writeln!(writer, "{}", command).unwrap();
-    }
-}
-
-fn run_builtin_history(
-    args: &[&str],
-    history: &mut Vec<String>,
-    path: &PathBuf,
-    rl: &mut Editor<(), DefaultHistory>,
-) {
+fn run_builtin_history(args: &[&str], rl: &mut Editor<(), DefaultHistory>) {
     match args {
         ["-c"] => {
-            history.clear();
-            let _ = rl.clear_history();
-            save_history(history, path);
+            rl.clear_history().ok();
+            save_shell_history(rl);
             println!("History cleared.");
         }
 
         ["-w"] => {
-            save_history(history, path);
+            save_shell_history(rl);
             println!("History was written to file.")
         }
 
         [] => {
-            let start = if history.len() > HISTSIZE {
-                history.len() - HISTSIZE
+            let hist = rl.history();
+            let start = if hist.len() > HISTSIZE {
+                hist.len() - HISTSIZE
             } else {
                 0
             };
-
-            for (i, cmd) in history.iter().skip(start).enumerate() {
+            for (i, cmd) in hist.iter().skip(start).enumerate() {
                 println!("{:>5} {}", start + i + 1, cmd);
             }
         }
