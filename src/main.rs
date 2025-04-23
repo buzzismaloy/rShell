@@ -280,8 +280,12 @@ fn run_builtin_cd<I: Iterator<Item = String>>(mut args: I, oldpwd: &mut Option<P
         }
 
         Some(path) if path.starts_with("~") => {
-            let path_suf = path.trim_start_matches('~');
-            PathBuf::from(home.clone()).join(path_suf)
+            if path == "~" || path == "~/" {
+                PathBuf::from(home.clone())
+            } else {
+                let path_suf = path.trim_start_matches("~/");
+                PathBuf::from(home.clone()).join(path_suf)
+            }
         }
 
         Some(path) => PathBuf::from(path),
@@ -303,7 +307,7 @@ fn run_builtin_cd<I: Iterator<Item = String>>(mut args: I, oldpwd: &mut Option<P
 }
 
 fn run_buitlin_help() {
-    let builtins = ["cd", "pwd", "help", "exit"];
+    let builtins = ["cd", "pwd", "help", "history", "exit"];
     println!(
         "This is a {} - Shell written in Rust.",
         "rShell".to_string().cyan().bold()
