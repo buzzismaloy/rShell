@@ -61,6 +61,45 @@ fn get_prompt() -> String {
     )
 }
 
+fn expand_env_variables(input: &str) -> String {
+    let mut result = String::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '$' {
+            let mut var_name = String::new();
+
+            while let Some(&next) = chars.peek() {
+                if next.is_alphanumeric() || next == '_' {
+                    var_name.push(next);
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+
+            let rep = match var_name.as_str() {
+                "HOME" => env::var("HOME").unwrap_or_default(),
+                "PATH" => env::var("PATH").unwrap_or_default(),
+                "USER" => env::var("USER").unwrap_or_default(),
+                "PWD" => env::current_dir()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
+                "LANG" => env::var("LANG").unwrap_or_default(),
+
+                _ => format!("UNKNOWN YET VARIABLE: ${}", var_name),
+            };
+
+            result.push_str(&rep);
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
+
 fn main() {
     rshell_loop();
 }
@@ -88,7 +127,8 @@ fn rshell_loop() {
                     }
                 }
 
-                let mut commands = trimmed.split('|').peekable();
+                let expand_input = expand_env_variables(trimmed);
+                let mut commands = expand_input.split('|').peekable();
                 let mut prev_command: Option<Child> = None;
 
                 while let Some(command) = commands.next() {
