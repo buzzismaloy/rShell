@@ -2,6 +2,7 @@ use colored::*;
 use dirs::home_dir;
 use gethostname::gethostname;
 use rustyline::Editor;
+use rustyline::error::ReadlineError;
 use rustyline::history::{DefaultHistory, History};
 use std::env;
 use std::fs::OpenOptions;
@@ -61,6 +62,10 @@ fn get_prompt() -> String {
 }
 
 fn main() {
+    rshell_loop();
+}
+
+fn rshell_loop() {
     let mut oldpwd: Option<PathBuf> = None;
     let mut rl = Editor::<(), DefaultHistory>::new().unwrap();
     let history_path = get_history_path();
@@ -158,11 +163,24 @@ fn main() {
                 }
             }
 
-            Err(e) => {
-                println!("Error: {}", e);
-                save_shell_history(&rl);
-                break;
-            }
+            Err(e) => match e {
+                ReadlineError::Interrupted => {
+                    println!("SIGINT captured!");
+                    continue;
+                }
+
+                ReadlineError::Eof => {
+                    println!("Captured Ctrl + D (EOF), terminating...");
+                    save_shell_history(&rl);
+                    break;
+                }
+
+                _ => {
+                    println!("Error: {}", e);
+                    save_shell_history(&rl);
+                    break;
+                }
+            },
         }
     }
 }
